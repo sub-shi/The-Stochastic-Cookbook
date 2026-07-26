@@ -14,6 +14,11 @@ This repository presents a collection of stochastic process recipes for quantita
 
 The content is published as a static documentation site using MkDocs Material.
 
+### Public Site
+```powershell
+https://thestochasticcookbook.netlify.app/
+```
+
 ## Getting Started
 
 ### Prerequisites
