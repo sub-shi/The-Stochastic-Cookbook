@@ -1,0 +1,48 @@
+site_name: The Stochastic Cookbook
+site_description: Statistical Recipes for Gaussian Processes
+extra_templates: []
+
+theme:
+  name: material
+  logo: assets/letter-s.svg
+  palette:
+    scheme: default # Light theme to match card layout
+    primary: white
+    accent: deep purple
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - content.code.annotate
+
+extra_css:
+  - stylesheets/custom.css
+  - https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css
+
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+
+extra_javascript:
+  - https://cdn.plot.ly/plotly-2.27.0.min.js
+  - javascript/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Recipes:
+      - 01. Geometric Brownian Motion: recipes/geometric-brownian-motion.md
+      - 02. Ornstein-Uhlenbeck Process: recipes/ornstein-uhlenbeck.md
+      - 03. Cox-Ingersoll-Ross Process: recipes/cox-ingersoll-ross.md
+      - 04. Heston Model: recipes/heston-model.md
+      - 05. Vector Brownian Motion: recipes/vector-brownian-motion.md
+  - Resources: resources.md

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 10px; background: #ffffff; }
+    .controls { background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .plot-card { height: 230px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .slider-group { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 8px; }
+    label { font-weight: 600; color: #334155; font-size: 11px; }
+    select, button { padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 11px; }
+    button { background: #6366f1; color: white; border: none; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div>
+        <label>Method: </label>
+        <select id="sim-method" onchange="render()">
+          <option value="cholesky" selected>Cholesky Factorization Decomposition</option>
+        </select>
+      </div>
+      <button onclick="render()">Render / Refresh Plots</button>
+    </div>
+
+    <div class="slider-group">
+      <div>
+        <label>Pair Correlation (ρ): <span id="rho-val" style="color:#6366f1;">0.80</span></label><br>
+        <input type="range" id="rho" min="-0.95" max="0.95" value="0.80" step="0.05" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Dimensions (d): <span id="dim-val" style="color:#6366f1;">3</span></label><br>
+        <input type="range" id="dim" min="2" max="5" value="3" step="1" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Time Steps (N): <span id="steps-val" style="color:#6366f1;">200</span></label><br>
+        <input type="range" id="steps" min="50" max="300" value="200" style="width:100%" oninput="render()">
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div id="p-paths" class="plot-card"></div>
+    <div id="p-cov" class="plot-card"></div>
+    <div id="p-scatter" class="plot-card"></div>
+    <div id="p-theo" class="plot-card"></div>
+  </div>
+
+  <script>
+  function randn() {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  function render() {
+    const rho = parseFloat(document.getElementById('rho').value);
+    const d = parseInt(document.getElementById('dim').value);
+    const N = parseInt(document.getElementById('steps').value);
+
+    document.getElementById('rho-val').innerText = rho.toFixed(2);
+    document.getElementById('dim-val').innerText = d;
+    document.getElementById('steps-val').innerText = N;
+
+    const T = 1.0;
+    const t = Array.from({length: N}, (_, i) => (i / (N - 1)) * T);
+    const dt = T / (N - 1);
+    const sqrt_dt = Math.sqrt(dt);
+
+    // 1. Build Correlation Matrix Sigma
+    let Sigma = Array.from({length: d}, (_, i) => 
+      Array.from({length: d}, (_, j) => (i === j ? 1.0 : rho))
+    );
+
+    // 2. Lower Triangular Cholesky Factor L
+    let L = Array.from({length: d}, () => new Array(d).fill(0));
+    for (let i = 0; i < d; i++) {
+      for (let j = 0; j <= i; j++) {
+        let sum = 0;
+        for (let k = 0; k < j; k++) sum += L[i][k] * L[j][k];
+        if (i === j) {
+          L[i][j] = Math.sqrt(Math.max(0, Sigma[i][i] - sum));
+        } else {
+          L[i][j] = L[j][j] > 0 ? (Sigma[i][j] - sum) / L[j][j] : 0;
+        }
+      }
+    }
+
+    // 3. Correlated Brownian Motion Increments
+    let W = Array.from({length: d}, () => new Array(N).fill(0));
+    for (let i = 1; i < N; i++) {
+      let Z_indep = Array.from({length: d}, () => randn());
+      for (let r = 0; r < d; r++) {
+        let dW_r = 0;
+        for (let c = 0; c <= r; c++) dW_r += L[r][c] * Z_indep[c];
+        W[r][i] = W[r][i - 1] + sqrt_dt * dW_r;
+      }
+    }
+
+    // Empirical Covariance Matrix at Terminal Time T
+    let empCov = Array.from({length: d}, () => new Array(d).fill(0));
+    for (let i = 0; i < d; i++) {
+      for (let j = 0; j < d; j++) {
+        empCov[i][j] = Sigma[i][j] * T;
+      }
+    }
+
+    const layout = { 
+      autosize: true, 
+      margin: { t: 25, b: 35, l: 40, r: 15 },
+      font: { size: 10 }
+    };
+    const config = { responsive: true, displayModeBar: false };
+
+    // 1. Correlated Trajectories W_1(t), ..., W_d(t)
+    const colors = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
+    let pathTraces = W.map((path, idx) => ({ 
+      x: t, y: path, mode: 'lines', name: `W_${idx + 1}(t)`, line: { color: colors[idx % colors.length] } 
+    }));
+    Plotly.react('p-paths', pathTraces, { 
+      ...layout, title: { text: `Correlated Vector Paths (d = ${d})`, font: { size: 12, color: '#6366f1' } }, 
+      showlegend: true, legend: { orientation: 'h', x: 0, y: -0.3, font: { size: 9 } },
+      yaxis: { title: 'W_i(t)' }, xaxis: { title: 't' } 
+    }, config);
+
+    // 2. Correlation Matrix Heatmap
+    Plotly.react('p-cov', [{ z: Sigma, type: 'heatmap', colorscale: 'Viridis', showscale: true }], { 
+      ...layout, title: { text: 'Target Correlation Matrix Σ', font: { size: 12, color: '#6366f1' } }, 
+      yaxis: { title: 'Dimension i' }, xaxis: { title: 'Dimension j' } 
+    }, config);
+
+    // 3. Phase-Space Scatter Plot (W_1 vs W_2)
+    Plotly.react('p-scatter', [{ x: W[0], y: W[1], mode: 'lines+markers', marker: { size: 3, color: '#6366f1' }, line: { width: 1.5 } }], { 
+      ...layout, title: { text: `Phase Space Co-Movement (ρ = ${rho.toFixed(2)})`, font: { size: 12, color: '#6366f1' } }, 
+      xaxis: { title: 'W_1(t)' }, yaxis: { title: 'W_2(t)' } 
+    }, config);
+
+    // 4. Terminal Covariance Matrix Heatmap
+    Plotly.react('p-theo', [{ z: empCov, type: 'heatmap', colorscale: 'Viridis', showscale: true }], { 
+      ...layout, title: { text: 'Terminal Covariance Matrix (T=1.0)', font: { size: 12, color: '#6366f1' } }, 
+      yaxis: { title: 'Dimension i' }, xaxis: { title: 'Dimension j' } 
+    }, config);
+  }
+
+  window.onload = function() { setTimeout(render, 100); };
+  </script>
+</body>
+</html>

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 10px; background: #ffffff; }
+    .controls { background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .plot-card { height: 230px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .slider-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px; }
+    label { font-weight: 600; color: #334155; font-size: 11px; }
+    select, button { padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 11px; }
+    button { background: #6366f1; color: white; border: none; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div>
+        <label>Method: </label>
+        <select id="sim-method" onchange="render()">
+          <option value="exact" selected>Exact Exponential Sampling</option>
+          <option value="euler">Euler-Maruyama Discretization</option>
+        </select>
+      </div>
+      <button onclick="render()">Render / Refresh Plots</button>
+    </div>
+
+    <div class="slider-group">
+      <div>
+        <label>Drift (μ): <span id="mu-val" style="color:#6366f1;">0.05</span></label><br>
+        <input type="range" id="mu" min="-0.2" max="0.3" value="0.05" step="0.01" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Volatility (σ): <span id="sigma-val" style="color:#6366f1;">0.20</span></label><br>
+        <input type="range" id="sigma" min="0.05" max="0.8" value="0.20" step="0.05" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Time Steps (N): <span id="steps-val" style="color:#6366f1;">200</span></label><br>
+        <input type="range" id="steps" min="50" max="300" value="200" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Sample Paths: <span id="paths-val" style="color:#6366f1;">5</span></label><br>
+        <input type="range" id="paths" min="1" max="15" value="5" style="width:100%" oninput="render()">
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div id="p-paths" class="plot-card"></div>
+    <div id="p-log" class="plot-card"></div>
+    <div id="p-dist" class="plot-card"></div>
+    <div id="p-mean" class="plot-card"></div>
+  </div>
+
+  <script>
+  function randn() {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  function render() {
+    const mu = parseFloat(document.getElementById('mu').value);
+    const sigma = parseFloat(document.getElementById('sigma').value);
+    const N = parseInt(document.getElementById('steps').value);
+    const P = parseInt(document.getElementById('paths').value);
+    const method = document.getElementById('sim-method').value;
+
+    document.getElementById('mu-val').innerText = mu.toFixed(2);
+    document.getElementById('sigma-val').innerText = sigma.toFixed(2);
+    document.getElementById('steps-val').innerText = N;
+    document.getElementById('paths-val').innerText = P;
+
+    const S0 = 100.0;
+    const t = Array.from({length: N}, (_, i) => i / (N - 1));
+    const dt = 1.0 / (N - 1);
+    const sqrt_dt = Math.sqrt(dt);
+
+    let S = Array.from({length: P}, () => new Array(N).fill(S0));
+    let logS = Array.from({length: P}, () => new Array(N).fill(Math.log(S0)));
+
+    for (let p = 0; p < P; p++) {
+      if (method === 'exact') {
+        let W = 0;
+        for (let i = 1; i < N; i++) {
+          W += sqrt_dt * randn();
+          S[p][i] = S0 * Math.exp((mu - 0.5 * sigma * sigma) * t[i] + sigma * W);
+          logS[p][i] = Math.log(S[p][i]);
+        }
+      } else {
+        for (let i = 1; i < N; i++) {
+          let dW = sqrt_dt * randn();
+          S[p][i] = Math.max(1e-4, S[p][i - 1] + mu * S[p][i - 1] * dt + sigma * S[p][i - 1] * dW);
+          logS[p][i] = Math.log(S[p][i]);
+        }
+      }
+    }
+
+    // Expected Mean Profile E[S_t] = S0 * exp(mu * t)
+    const expectedMean = t.map(ti => S0 * Math.exp(mu * ti));
+    
+    // Sample Mean across realization paths
+    const sampleMean = t.map((_, i) => {
+      let sum = 0;
+      for (let p = 0; p < P; p++) sum += S[p][i];
+      return sum / P;
+    });
+
+    const layout = { 
+      autosize: true, 
+      margin: { t: 25, b: 35, l: 40, r: 15 },
+      font: { size: 10 }
+    };
+    const config = { responsive: true, displayModeBar: false };
+
+    // 1. Price Sample Paths S(t)
+    Plotly.react('p-paths', S.map(path => ({ x: t, y: path, mode: 'lines' })), { 
+      ...layout, title: { text: 'Asset Price Paths S(t)', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: false, yaxis: { title: 'S(t)' }, xaxis: { title: 't' } 
+    }, config);
+
+    // 2. Log Returns Log(S_t)
+    Plotly.react('p-log', logS.map(path => ({ x: t, y: path, mode: 'lines' })), { 
+      ...layout, title: { text: 'Log Asset Trajectories log(S_t)', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: false, yaxis: { title: 'ln S(t)' }, xaxis: { title: 't' } 
+    }, config);
+
+    // 3. Terminal Price Log-Normal Density Distribution
+    let terminalPrices = S.map(path => path[N - 1]);
+    Plotly.react('p-dist', [{ x: terminalPrices, type: 'histogram', marker: { color: '#6366f1' } }], { 
+      ...layout, title: { text: 'Terminal Price Distribution S(T)', font: { size: 12, color: '#6366f1' } }, 
+      xaxis: { title: 'S(T)' }, yaxis: { title: 'Count' } 
+    }, config);
+
+    // 4. Expected vs Empirical Mean Growth E[S_t]
+    Plotly.react('p-mean', [
+      { x: t, y: expectedMean, mode: 'lines', name: 'Theoretical E[S_t]', line: { color: '#10b981', width: 2.5 } },
+      { x: t, y: sampleMean, mode: 'lines', name: 'Sample Mean', line: { color: '#ef4444', width: 2, dash: 'dot' } }
+    ], { 
+      ...layout, title: { text: 'Expected vs Sample Mean E[S_t]', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: true, legend: { orientation: 'h', x: 0, y: -0.3, font: { size: 9 } },
+      yaxis: { title: 'E[S_t]' }, xaxis: { title: 't' } 
+    }, config);
+  }
+
+  window.onload = function() { setTimeout(render, 100); };
+  </script>
+</body>
+</html>

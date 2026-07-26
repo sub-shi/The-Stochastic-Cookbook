@@ -1,0 +1,44 @@
+# Python virtual environments
+venv/
+.env
+.python-version
+.venv/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+pip-wheel-metadata/
+*.egg-info/
+
+# Pytest
+.cache/
+.pytest_cache/
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# MkDocs site output
+site/
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# System files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local notes and configuration
+*.log
+
+# Temporary files
+*~
+*.swp
+*.swo

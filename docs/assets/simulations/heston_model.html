@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 10px; background: #ffffff; }
+    .controls { background: #f8fafc; padding: 14px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .plot-card { height: 230px; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; }
+    .slider-group { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 8px; }
+    label { font-weight: 600; color: #334155; font-size: 11px; }
+    select, button { padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 11px; }
+    button { background: #6366f1; color: white; border: none; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+  </style>
+</head>
+<body>
+
+  <div class="controls">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div>
+        <label>Method: </label>
+        <select id="sim-method" onchange="render()">
+          <option value="full_truncation" selected>Full Truncation Euler Scheme</option>
+        </select>
+      </div>
+      <button onclick="render()">Render / Refresh Plots</button>
+    </div>
+
+    <div class="slider-group">
+      <div>
+        <label>Correlation (ρ): <span id="rho-val" style="color:#6366f1;">-0.70</span></label><br>
+        <input type="range" id="rho" min="-0.95" max="0.95" value="-0.70" step="0.05" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Vol of Vol (σ): <span id="sigma-val" style="color:#6366f1;">0.30</span></label><br>
+        <input type="range" id="sigma" min="0.05" max="0.80" value="0.30" step="0.05" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Reversion (κ): <span id="kappa-val" style="color:#6366f1;">2.0</span></label><br>
+        <input type="range" id="kappa" min="0.5" max="5.0" value="2.0" step="0.5" style="width:100%" oninput="render()">
+      </div>
+      <div>
+        <label>Sample Paths: <span id="paths-val" style="color:#6366f1;">5</span></label><br>
+        <input type="range" id="paths" min="1" max="15" value="5" style="width:100%" oninput="render()">
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div id="p-price" class="plot-card"></div>
+    <div id="p-variance" class="plot-card"></div>
+    <div id="p-dist" class="plot-card"></div>
+    <div id="p-scatter" class="plot-card"></div>
+  </div>
+
+  <script>
+  function randn() {
+    let u = 0, v = 0;
+    while(u === 0) u = Math.random();
+    while(v === 0) v = Math.random();
+    return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+  }
+
+  function render() {
+    const rho = parseFloat(document.getElementById('rho').value);
+    const sigma = parseFloat(document.getElementById('sigma').value);
+    const kappa = parseFloat(document.getElementById('kappa').value);
+    const P = parseInt(document.getElementById('paths').value);
+    const N = 200;
+
+    document.getElementById('rho-val').innerText = rho.toFixed(2);
+    document.getElementById('sigma-val').innerText = sigma.toFixed(2);
+    document.getElementById('kappa-val').innerText = kappa.toFixed(1);
+    document.getElementById('paths-val').innerText = P;
+
+    const S0 = 100.0;
+    const v0 = 0.04;
+    const theta = 0.04;
+    const r = 0.02;
+    const T = 1.0;
+    const t = Array.from({length: N}, (_, i) => (i / (N - 1)) * T);
+    const dt = T / (N - 1);
+    const sqrt_dt = Math.sqrt(dt);
+
+    let S = Array.from({length: P}, () => new Array(N).fill(S0));
+    let v = Array.from({length: P}, () => new Array(N).fill(v0));
+
+    for (let p = 0; p < P; p++) {
+      for (let i = 1; i < N; i++) {
+        let Z1 = randn();
+        let Z2 = rho * Z1 + Math.sqrt(1 - rho * rho) * randn();
+
+        let v_pos = Math.max(0, v[p][i - 1]);
+        
+        // Asset Price Update
+        S[p][i] = S[p][i - 1] * Math.exp((r - 0.5 * v_pos) * dt + Math.sqrt(v_pos) * sqrt_dt * Z1);
+        
+        // Variance Update (Full Truncation Euler)
+        v[p][i] = v[p][i - 1] + kappa * (theta - v_pos) * dt + sigma * Math.sqrt(v_pos) * sqrt_dt * Z2;
+        v[p][i] = Math.max(0, v[p][i]);
+      }
+    }
+
+    const layout = { 
+      autosize: true, 
+      margin: { t: 25, b: 35, l: 40, r: 15 },
+      font: { size: 10 }
+    };
+    const config = { responsive: true, displayModeBar: false };
+
+    // 1. Asset Price Paths S(t)
+    Plotly.react('p-price', S.map(path => ({ x: t, y: path, mode: 'lines' })), { 
+      ...layout, title: { text: 'Asset Price Paths S(t)', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: false, yaxis: { title: 'S(t)' }, xaxis: { title: 't' } 
+    }, config);
+
+    // 2. Variance Process Paths v(t)
+    Plotly.react('p-variance', v.map(path => ({ x: t, y: path, mode: 'lines' })), { 
+      ...layout, title: { text: 'Stochastic Variance Paths v(t)', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: false, yaxis: { title: 'v(t)', rangemode: 'tozero' }, xaxis: { title: 't' } 
+    }, config);
+
+    // 3. Terminal Log Returns Density
+    let terminalReturns = S.map(path => Math.log(path[N - 1] / S0));
+    Plotly.react('p-dist', [{ x: terminalReturns, type: 'histogram', marker: { color: '#6366f1' } }], { 
+      ...layout, title: { text: 'Terminal Log Returns ln(S_T / S_0)', font: { size: 12, color: '#6366f1' } }, 
+      xaxis: { title: 'Log Return' }, yaxis: { title: 'Count' } 
+    }, config);
+
+    // 4. Return vs Variance Correlation Scatter
+    let finalReturns = [];
+    let finalVars = [];
+    for (let p = 0; p < P; p++) {
+      finalReturns.push(Math.log(S[p][N - 1] / S0));
+      finalVars.push(v[p][N - 1]);
+    }
+    Plotly.react('p-scatter', [{ x: finalReturns, y: finalVars, mode: 'markers', marker: { color: '#ef4444', size: 6 } }], { 
+      ...layout, title: { text: `Leverage Effect (ρ = ${rho.toFixed(2)})`, font: { size: 12, color: '#6366f1' } }, 
+      xaxis: { title: 'Terminal Log Return' }, yaxis: { title: 'Terminal Variance v(T)' } 
+    }, config);
+  }
+
+  window.onload = function() { setTimeout(render, 100); };
+  </script>
+</body>
+</html>
