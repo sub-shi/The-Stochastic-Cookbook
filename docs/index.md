@@ -5,7 +5,7 @@
     <div style="font-size: 16px; font-weight: 600; color: #cbd5e1; margin-top: -6px; margin-bottom: 16px;">
       with Chef <span style="color: #ffffff;">Subrat Sethi</span>, a quant enthusiast
     </div>
-    <p>Master the art of simulating stochastic processes with comprehensive recipes for Brownian motion, Brownian bridge, fractional dynamics, and Markovian lifting.</p>
+    <p>Master the art of simulating stochastic processes with comprehensive recipes for Geometric Brownian Motion, Ornstein-Uhlenbeck Process, Cox-Ingersoll-Ross Process, Heston Model and Vector Brownian Motion.</p>
     <a href="#recipes" class="hero-btn hero-btn-primary">Explore Recipes</a>
     <a href="#resources" class="hero-btn hero-btn-secondary">Other Resources</a>
   </div>
