@@ -14,9 +14,6 @@
     select, button { padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; font-weight: 600; font-size: 11px; }
     button { background: #6366f1; color: white; border: none; cursor: pointer; }
     button:hover { background: #4f46e5; }
-    .feller-status { font-size: 11px; font-weight: 700; margin-top: 6px; text-align: right; }
-    .feller-satisfied { color: #10b981; }
-    .feller-violated { color: #ef4444; }
   </style>
 </head>
 <body>
@@ -26,28 +23,30 @@
       <div>
         <label>Method: </label>
         <select id="sim-method" onchange="render()">
-          <option value="truncated_euler" selected>Full Truncation Euler-Maruyama</option>
-          <option value="chi_sq">Exact Non-Central Chi-Squared Sampling</option>
+          <optgroup label="Continuous-Time">
+            <option value="continuous">Theoretical Continuous Trajectory</option>
+          </optgroup>
+          <optgroup label="Discrete-Time">
+            <option value="exact" selected>Exact Gaussian Transition</option>
+            <option value="euler">Euler–Maruyama Discretization</option>
+          </optgroup>
         </select>
       </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span id="feller-badge" class="feller-status feller-satisfied">Feller Condition: Satisfied</span>
-        <button onclick="render()">Render / Refresh Plots</button>
-      </div>
+      <button onclick="render()">Render / Refresh Plots</button>
     </div>
 
     <div class="slider-group">
       <div>
-        <label>Reversion Speed (κ): <span id="kappa-val" style="color:#6366f1;">2.0</span></label><br>
-        <input type="range" id="kappa" min="0.1" max="5.0" value="2.0" step="0.1" style="width:100%" oninput="render()">
+        <label>Reversion Speed (θ): <span id="theta-val" style="color:#6366f1;">2.0</span></label><br>
+        <input type="range" id="theta" min="0.1" max="10.0" value="2.0" step="0.1" style="width:100%" oninput="render()">
       </div>
       <div>
-        <label>Long-Term Mean (θ): <span id="theta-val" style="color:#6366f1;">0.05</span></label><br>
-        <input type="range" id="theta" min="0.01" max="0.20" value="0.05" step="0.01" style="width:100%" oninput="render()">
+        <label>Long-Term Mean (μ): <span id="mu-val" style="color:#6366f1;">1.0</span></label><br>
+        <input type="range" id="mu" min="-3.0" max="3.0" value="1.0" step="0.1" style="width:100%" oninput="render()">
       </div>
       <div>
-        <label>Volatility (σ): <span id="sigma-val" style="color:#6366f1;">0.15</span></label><br>
-        <input type="range" id="sigma" min="0.02" max="0.50" value="0.15" step="0.01" style="width:100%" oninput="render()">
+        <label>Volatility (σ): <span id="sigma-val" style="color:#6366f1;">0.50</span></label><br>
+        <input type="range" id="sigma" min="0.1" max="2.0" value="0.50" step="0.05" style="width:100%" oninput="render()">
       </div>
       <div>
         <label>Sample Paths: <span id="paths-val" style="color:#6366f1;">5</span></label><br>
@@ -71,73 +70,44 @@
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   }
 
-  // Non-central chi-squared generator approximation
-  function randncx2(df, ncp) {
-    let z = randn();
-    let x_val = (z + Math.sqrt(ncp)) ** 2;
-    if (df > 1) {
-      let sum = 0;
-      for (let i = 0; i < df - 1; i++) {
-        let g = randn();
-        sum += g * g;
-      }
-      x_val += sum;
-    }
-    return x_val;
-  }
-
   function render() {
-    const kappa = parseFloat(document.getElementById('kappa').value);
     const theta = parseFloat(document.getElementById('theta').value);
+    const mu = parseFloat(document.getElementById('mu').value);
     const sigma = parseFloat(document.getElementById('sigma').value);
     const P = parseInt(document.getElementById('paths').value);
     const method = document.getElementById('sim-method').value;
     const N = 200;
 
-    document.getElementById('kappa-val').innerText = kappa.toFixed(1);
-    document.getElementById('theta-val').innerText = theta.toFixed(2);
+    document.getElementById('theta-val').innerText = theta.toFixed(1);
+    document.getElementById('mu-val').innerText = mu.toFixed(1);
     document.getElementById('sigma-val').innerText = sigma.toFixed(2);
     document.getElementById('paths-val').innerText = P;
 
-    // Check Feller Condition: 2 * kappa * theta > sigma^2
-    const fellerLhs = 2 * kappa * theta;
-    const fellerRhs = sigma * sigma;
-    const fellerBadge = document.getElementById('feller-badge');
-    if (fellerLhs > fellerRhs) {
-      fellerBadge.innerText = `Feller Condition: Satisfied (${fellerLhs.toFixed(3)} > ${fellerRhs.toFixed(3)})`;
-      fellerBadge.className = 'feller-status feller-satisfied';
-    } else {
-      fellerBadge.innerText = `Feller Condition: Violated (${fellerLhs.toFixed(3)} ≤ ${fellerRhs.toFixed(3)})`;
-      fellerBadge.className = 'feller-status feller-violated';
-    }
-
-    const X0 = 0.05;
-    const t = Array.from({length: N}, (_, i) => (i / (N - 1)) * 3.0);
+    const X0 = 0.0;
+    const t = Array.from({length: N}, (_, i) => (i / (N - 1)) * 3.0); // T = 3.0
     const dt = 3.0 / (N - 1);
-    const sqrt_dt = Math.sqrt(dt);
 
     let X = Array.from({length: P}, () => new Array(N).fill(X0));
 
     for (let p = 0; p < P; p++) {
-      if (method === 'chi_sq') {
-        const d = (4 * kappa * theta) / (sigma * sigma);
-        const c = (sigma * sigma * (1 - Math.exp(-kappa * dt))) / (4 * kappa);
+      if (method === 'continuous' || method === 'exact') {
+        const decay = Math.exp(-theta * dt);
+        const var_step = (sigma * sigma / (2 * theta)) * (1 - Math.exp(-2 * theta * dt));
+        const std_step = Math.sqrt(Math.max(0, var_step));
+
         for (let i = 1; i < N; i++) {
-          const ncp = (4 * kappa * X[p][i - 1] * Math.exp(-kappa * dt)) / (sigma * sigma * (1 - Math.exp(-kappa * dt)));
-          X[p][i] = c * randncx2(d, ncp);
+          X[p][i] = mu + (X[p][i - 1] - mu) * decay + std_step * randn();
         }
-      } else {
-        // Full Truncation Euler-Maruyama Scheme
+      } else if (method === 'euler') {
+        const sqrt_dt = Math.sqrt(dt);
         for (let i = 1; i < N; i++) {
-          let pos_x = Math.max(0, X[p][i - 1]);
-          X[p][i] = X[p][i - 1] + kappa * (theta - pos_x) * dt + sigma * Math.sqrt(pos_x) * sqrt_dt * randn();
-          X[p][i] = Math.max(0, X[p][i]); // Floor at 0
+          X[p][i] = X[p][i - 1] + theta * (mu - X[p][i - 1]) * dt + sigma * sqrt_dt * randn();
         }
       }
     }
 
-    // Theoretical Mean Line E[X_t] = theta + (X0 - theta) * exp(-kappa * t)
-    const theoreticalMean = t.map(ti => theta + (X0 - theta) * Math.exp(-kappa * ti));
+    // Theoretical Mean Line E[X_t] = mu + (X0 - mu) * exp(-theta * t)
+    const theoreticalMean = t.map(ti => mu + (X0 - mu) * Math.exp(-theta * ti));
     
     // Sample Mean across paths
     const sampleMean = t.map((_, i) => {
@@ -163,10 +133,10 @@
     };
     const config = { responsive: true, displayModeBar: false };
 
-    // 1. Non-Negative Trajectories
+    // 1. Sample Paths
     Plotly.react('p-paths', X.map(path => ({ x: t, y: path, mode: 'lines' })), { 
-      ...layout, title: { text: 'CIR Process Trajectories X(t)', font: { size: 12, color: '#6366f1' } }, 
-      showlegend: false, yaxis: { title: 'X(t)', rangemode: 'tozero' }, xaxis: { title: 't' } 
+      ...layout, title: { text: 'Mean-Reverting Trajectories X(t)', font: { size: 12, color: '#6366f1' } }, 
+      showlegend: false, yaxis: { title: 'X(t)' }, xaxis: { title: 't' } 
     }, config);
 
     // 2. Empirical Covariance Matrix
@@ -175,10 +145,10 @@
       yaxis: { title: 't' }, xaxis: { title: 't' } 
     }, config);
 
-    // 3. Non-Central Chi-Squared Terminal Distribution
+    // 3. Terminal Stationary Gaussian Distribution
     let terminalValues = X.map(path => path[N - 1]);
     Plotly.react('p-dist', [{ x: terminalValues, type: 'histogram', marker: { color: '#6366f1' } }], { 
-      ...layout, title: { text: 'Terminal Density X(T)', font: { size: 12, color: '#6366f1' } }, 
+      ...layout, title: { text: 'Terminal State Distribution X(T)', font: { size: 12, color: '#6366f1' } }, 
       xaxis: { title: 'X(T)' }, yaxis: { title: 'Count' } 
     }, config);
 
@@ -187,7 +157,7 @@
       { x: t, y: theoreticalMean, mode: 'lines', name: 'Theoretical E[X_t]', line: { color: '#10b981', width: 2.5 } },
       { x: t, y: sampleMean, mode: 'lines', name: 'Sample Mean', line: { color: '#ef4444', width: 2, dash: 'dot' } }
     ], { 
-      ...layout, title: { text: 'Expected Mean Reversion E[X_t]', font: { size: 12, color: '#6366f1' } }, 
+      ...layout, title: { text: 'Expected Mean Decay to μ', font: { size: 12, color: '#6366f1' } }, 
       showlegend: true, legend: { orientation: 'h', x: 0, y: -0.3, font: { size: 9 } },
       yaxis: { title: 'E[X_t]' }, xaxis: { title: 't' } 
     }, config);

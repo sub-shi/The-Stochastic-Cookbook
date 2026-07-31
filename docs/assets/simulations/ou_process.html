@@ -23,8 +23,13 @@
       <div>
         <label>Method: </label>
         <select id="sim-method" onchange="render()">
-          <option value="exact" selected>Exact Gaussian Transition</option>
-          <option value="euler">Euler-Maruyama Discretization</option>
+          <optgroup label="Continuous-Time">
+            <option value="continuous">Theoretical Continuous Trajectory</option>
+          </optgroup>
+          <optgroup label="Discrete-Time">
+            <option value="exact" selected>Exact Gaussian Transition</option>
+            <option value="euler">Euler–Maruyama Discretization</option>
+          </optgroup>
         </select>
       </div>
       <button onclick="render()">Render / Refresh Plots</button>
@@ -85,7 +90,7 @@
     let X = Array.from({length: P}, () => new Array(N).fill(X0));
 
     for (let p = 0; p < P; p++) {
-      if (method === 'exact') {
+      if (method === 'continuous' || method === 'exact') {
         const decay = Math.exp(-theta * dt);
         const var_step = (sigma * sigma / (2 * theta)) * (1 - Math.exp(-2 * theta * dt));
         const std_step = Math.sqrt(Math.max(0, var_step));
@@ -93,7 +98,7 @@
         for (let i = 1; i < N; i++) {
           X[p][i] = mu + (X[p][i - 1] - mu) * decay + std_step * randn();
         }
-      } else {
+      } else if (method === 'euler') {
         const sqrt_dt = Math.sqrt(dt);
         for (let i = 1; i < N; i++) {
           X[p][i] = X[p][i - 1] + theta * (mu - X[p][i - 1]) * dt + sigma * sqrt_dt * randn();

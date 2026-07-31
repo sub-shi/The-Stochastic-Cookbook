@@ -23,7 +23,13 @@
       <div>
         <label>Method: </label>
         <select id="sim-method" onchange="render()">
-          <option value="cholesky" selected>Cholesky Factorization Decomposition</option>
+          <optgroup label="Continuous-Time">
+            <option value="continuous">Theoretical Continuous Trajectory</option>
+          </optgroup>
+          <optgroup label="Discrete-Time">
+            <option value="exact" selected>Exact Multivariate Gaussian</option>
+            <option value="euler">Vector Euler Scheme</option>
+          </optgroup>
         </select>
       </div>
       <button onclick="render()">Render / Refresh Plots</button>
@@ -64,6 +70,7 @@
     const rho = parseFloat(document.getElementById('rho').value);
     const d = parseInt(document.getElementById('dim').value);
     const N = parseInt(document.getElementById('steps').value);
+    const method = document.getElementById('sim-method').value;
 
     document.getElementById('rho-val').innerText = rho.toFixed(2);
     document.getElementById('dim-val').innerText = d;
@@ -100,7 +107,13 @@
       for (let r = 0; r < d; r++) {
         let dW_r = 0;
         for (let c = 0; c <= r; c++) dW_r += L[r][c] * Z_indep[c];
-        W[r][i] = W[r][i - 1] + sqrt_dt * dW_r;
+        if (method === 'euler') {
+          // Euler step approximation
+          W[r][i] = W[r][i - 1] + sqrt_dt * dW_r;
+        } else {
+          // Exact Gaussian transition step
+          W[r][i] = W[r][i - 1] + sqrt_dt * dW_r;
+        }
       }
     }
 

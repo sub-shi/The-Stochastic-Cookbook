@@ -10,15 +10,6 @@
   </div>
 
   <div class="resource-card">
-    <div style="font-size: 28px; margin-bottom: 12px; color: #ff0000;">
-      <i class="bi bi-youtube"></i>
-    </div>
-    <h3 style="margin: 0 0 8px 0; font-size: 18px; color: #0f172a;">YouTube</h3>
-    <p style="font-size: 13px; color: #64748b; margin: 0;">Watch tutorials, lectures, and simulations on the YouTube channel.</p>
-    <a href="https://youtube.com" class="btn-link" target="_blank">Visit Channel</a>
-  </div>
-
-  <div class="resource-card">
     <div style="font-size: 28px; margin-bottom: 12px; color: #0f172a;">
       <i class="bi bi-file-earmark-text"></i>
     </div>

@@ -9,46 +9,42 @@
     $$dX_t = \theta (\mu - X_t) dt + \sigma dW_t$$
 
     where:
-    * $\theta > 0$ is the mean-reversion speed.
-    * $\mu \in \mathbb{R}$ is the long-term mean level.
+    * $\theta > 0$ is the mean-reversion speed (stiffness).
+    * $\mu \in \mathbb{R}$ is the long-term structural equilibrium mean.
     * $\sigma > 0$ is the volatility coefficient.
     * $W_t$ is a standard Wiener process.
 
     ---
 
-    ### Exact Solution via Integrating Factors
+    ### Continuous Trajectory Concept
 
-    Using the integrating factor $e^{\theta t}$, we rewrite the SDE as:
+    In continuous time, the trajectory $X(t)$ represents an uninterrupted Gaussian path relaxing toward equilibrium mean $\mu$. Because the deterministic drift $\theta(\mu - X_t)$ continuously pulls the state back toward $\mu$, the variance remains bounded over time, unlike standard Brownian motion.
 
-    $$d\left(e^{\theta t} X_t\right) = e^{\theta t} dX_t + \theta e^{\theta t} X_t dt = \theta \mu e^{\theta t} dt + \sigma e^{\theta t} dW_t$$
+    Using the integrating factor $e^{\theta t}$, we integrate the SDE directly to obtain the **exact continuous-time solution**:
 
-    Integrating both sides from $0$ to $t$ gives the **exact continuous-time solution**:
+    $$X(t) = \mu + (X_0 - \mu) e^{-\theta t} + \sigma \int_0^t e^{-\theta (t - s)} dW_s$$
 
-    $$X_t = \mu + (X_0 - \mu) e^{-\theta t} + \sigma \int_0^t e^{-\theta (t - s)} dW_s$$
+    The stochastic integral term represents exponentially dampened Gaussian noise accumulated over time.
 
     ---
 
     ### Statistical Properties
 
-    1. **Conditional Expectation:** $\mathbb{E}[X_t \mid X_0] = \mu + (X_0 - \mu) e^{-\theta t}$
-    2. **Conditional Variance:** $\text{Var}(X_t \mid X_0) = \frac{\sigma^2}{2\theta} \left( 1 - e^{-2\theta t} \right)$
-    3. **Covariance:** $\text{Cov}(X_s, X_t) = \frac{\sigma^2}{2\theta} \left( e^{-\theta \vert{}t - s\vert{}} - e^{-\theta (t + s)} \right)$
-    4. **Stationary Distribution:** As $t \to \infty$, $X_t \sim \mathcal{N}\left(\mu, \frac{\sigma^2}{2\theta}\right)$
+    1. **Conditional Expectation:** $\mathbb{E}[X(t) \mid X_0] = \mu + (X_0 - \mu) e^{-\theta t}$
+    2. **Conditional Variance:** $\text{Var}(X(t) \mid X_0) = \frac{\sigma^2}{2\theta} \left( 1 - e^{-2\theta t} \right)$
+    3. **Covariance:** $\text{Cov}(X(s), X(t)) = \frac{\sigma^2}{2\theta} \left( e^{-\theta \vert{}t - s\vert{}} - e^{-\theta (t + s)} \right)$
+    4. **Stationary Invariant Distribution:** As $t \to \infty$, $X(t) \sim \mathcal{N}\left(\mu, \frac{\sigma^2}{2\theta}\right)$
 
     ---
 
     ### Continuous-time Python Implementation
 
-    Using the stochastic integral formulation, we evaluate continuous-time OU paths driven directly by underlying Brownian motion $W_t$:
+    Using the exact stochastic integral formulation, we evaluate continuous-time OU paths driven directly by continuous Brownian motion $W_t$:
 
     ```python
     import numpy as np
 
     def ou_continuous_path(X0=0.0, theta=2.0, mu=1.0, sigma=0.5, T=3.0, num_points=1000, paths=1, seed=42):
-        """
-        Evaluates continuous Ornstein-Uhlenbeck paths using the exact stochastic integral solution:
-        X(t) = mu + (X0 - mu) * exp(-theta * t) + sigma * int_0^t exp(-theta * (t - s)) dW(s)
-        """
         if seed is not None:
             np.random.seed(seed)
 
@@ -61,7 +57,7 @@
         X = np.zeros((paths, num_points))
         X[:, 0] = X0
         
-        # Evaluate integral sum for continuous trajectory
+        # Evaluate stochastic integral sum for continuous trajectory
         for i in range(1, num_points):
             ti = t[i]
             s_grid = t[:i]
@@ -77,9 +73,17 @@
 
     ## Discrete-time Recipes for OU Process
 
-    ### Method 1: Exact Transition Sampling (Recommended)
+    To simulate the Ornstein–Uhlenbeck process on a discrete grid $t_0 < t_1 < \dots < t_N$ with uniform step size $\Delta t = \frac{T}{N}$, two discrete numerical formulations are available.
 
-    Because the conditional distribution $X_{t_{i+1}} \mid X_{t_i}$ is exactly Gaussian, we sample without discretization error over step size $\Delta t$:
+    ---
+
+    ### Method 1: Discrete Exact Gaussian Transition Sampling
+
+    #### Short Explanation
+    Method 1 samples discrete step updates $X_{t_{i+1}}$ directly from the exact conditional Gaussian transition density derived via Itô's Lemma over step $\Delta t$.
+
+    * **Zero Discretization Error ($\mathcal{O}(0)$):** Preserves exact conditional mean decay and variance damping for any step size $\Delta t$.
+    * **Numerical Stability:** The exponential decay factor $e^{-\theta \Delta t} \in (0, 1)$ guarantees strictly stable relaxation toward $\mu$ without numerical overshooting.
 
     $$X_{t_{i+1}} = \mu + (X_{t_i} - \mu) e^{-\theta \Delta t} + \sqrt{\frac{\sigma^2}{2\theta} \left(1 - e^{-2\theta \Delta t}\right)} \, Z_i, \quad Z_i \sim \mathcal{N}(0, 1)$$
 
@@ -108,13 +112,19 @@
 
     ---
 
-    ### Method 2: Euler-Maruyama Scheme
+    ### Method 2: Discrete Euler–Maruyama Discretization Scheme
 
-    Direct finite-difference approximation of the SDE:
+    #### Short Explanation
+    Method 2 applies a first-order finite-difference approximation to the linear differential equation $dX_t = \theta(\mu - X_t)dt + \sigma dW_t$.
 
-    $$X_{t_{i+1}} = X_{t_i} + \theta (\mu - X_{t_i}) \Delta t + \sigma \sqrt{\Delta t} \, Z_i$$
+    * **Order 0.5 Strong Error:** Approximates exponential decay using linear term $(1 - \theta \Delta t)$.
+    * **Overshooting Risk:** For large step sizes $\Delta t > \frac{2}{\theta}$, the linear update multiplier $(1 - \theta \Delta t) < -1$ causes artificial, explosive numerical oscillations around mean $\mu$.
+
+    $$X_{t_{i+1}} = X_{t_i} + \theta (\mu - X_{t_i}) \Delta t + \sigma \sqrt{\Delta t} \, Z_i, \quad Z_i \sim \mathcal{N}(0, 1)$$
 
     ```python
+    import numpy as np
+
     def simulate_ou_euler(X0=0.0, theta=2.0, mu=1.0, sigma=0.5, T=3.0, steps=200, paths=1, seed=42):
         if seed is not None:
             np.random.seed(seed)

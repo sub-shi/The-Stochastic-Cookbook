@@ -1,115 +1,131 @@
-# 03. Cox-Ingersoll-Ross Process
+# 02. Ornstein-Uhlenbeck Process
 
 === "Continuous-time"
 
     ## Mathematical Foundation
 
-    The **Cox-Ingersoll-Ross (CIR) process** $(X_t)_{t \ge 0}$ is a continuous-time stochastic process widely used in short-rate modeling and stochastic volatility (e.g., Heston model). It is defined by the stochastic differential equation (SDE):
+    The **Ornstein-Uhlenbeck (OU) process** $(X_t)_{t \ge 0}$ is a continuous-time Gaussian process that exhibits mean-reverting dynamics. It is defined by the stochastic differential equation (SDE):
 
-    $$dX_t = \kappa (\theta - X_t) dt + \sigma \sqrt{X_t} dW_t$$
+    $$dX_t = \theta (\mu - X_t) dt + \sigma dW_t$$
 
     where:
-    * $\kappa > 0$ is the rate of mean reversion.
-    * $\theta > 0$ is the long-term mean level.
+    * $\theta > 0$ is the mean-reversion speed (stiffness).
+    * $\mu \in \mathbb{R}$ is the long-term structural equilibrium mean.
     * $\sigma > 0$ is the volatility coefficient.
     * $W_t$ is a standard Wiener process.
 
     ---
 
-    ### The Feller Condition
+    ### Continuous Trajectory Concept
 
-    A key property of the CIR process is that $X_t$ cannot drop below zero. Strictly positive trajectories are guaranteed if the **Feller Condition** holds:
+    In continuous time, the trajectory $X(t)$ represents an uninterrupted Gaussian path relaxing toward equilibrium mean $\mu$. Because the deterministic drift $\theta(\mu - X_t)$ continuously pulls the state back toward $\mu$, the variance remains bounded over time, unlike standard Brownian motion.
 
-    $$2\kappa\theta > \sigma^2$$
+    Using the integrating factor $e^{\theta t}$, we integrate the SDE directly to obtain the **exact continuous-time solution**:
 
-    * **If $2\kappa\theta > \sigma^2$:** The origin $X = 0$ is inaccessible; the process remains strictly positive ($X_t > 0$ almost surely).
-    * **If $2\kappa\theta \le \sigma^2$:** The process can touch zero, but it is immediately reflected back into the positive domain.
+    $$X(t) = \mu + (X_0 - \mu) e^{-\theta t} + \sigma \int_0^t e^{-\theta (t - s)} dW_s$$
+
+    The stochastic integral term represents exponentially dampened Gaussian noise accumulated over time.
 
     ---
 
     ### Statistical Properties
 
-    1. **Expectation:** $\mathbb{E}[X_t \mid X_0] = \theta + (X_0 - \theta) e^{-\kappa t}$
-    2. **Variance:** $\text{Var}(X_t \mid X_0) = X_0 \frac{\sigma^2}{\kappa} \left( e^{-\kappa t} - e^{-2\kappa t} \right) + \theta \frac{\sigma^2}{2\kappa} \left( 1 - e^{-\kappa t} \right)^2$
-    3. **Exact Distribution:** Conditional on $X_s$, $c \cdot X_t$ (where $c = \frac{4\kappa}{\sigma^2(1 - e^{-\kappa(t-s)})}$) follows a **non-central chi-squared distribution** $\chi^2(d, \lambda)$ with:
-       * Degrees of freedom: $d = \frac{4\kappa\theta}{\sigma^2}$
-       * Non-centrality parameter: $\lambda = c \cdot X_s e^{-\kappa(t-s)}$
+    1. **Conditional Expectation:** $\mathbb{E}[X(t) \mid X_0] = \mu + (X_0 - \mu) e^{-\theta t}$
+    2. **Conditional Variance:** $\text{Var}(X(t) \mid X_0) = \frac{\sigma^2}{2\theta} \left( 1 - e^{-2\theta t} \right)$
+    3. **Covariance:** $\text{Cov}(X(s), X(t)) = \frac{\sigma^2}{2\theta} \left( e^{-\theta \vert{}t - s\vert{}} - e^{-\theta (t + s)} \right)$
+    4. **Stationary Invariant Distribution:** As $t \to \infty$, $X(t) \sim \mathcal{N}\left(\mu, \frac{\sigma^2}{2\theta}\right)$
 
     ---
 
     ### Continuous-time Python Implementation
 
-    Evaluating continuous-time CIR paths via exact non-central chi-squared transition integrals:
+    Using the exact stochastic integral formulation, we evaluate continuous-time OU paths driven directly by continuous Brownian motion $W_t$:
 
     ```python
     import numpy as np
-    from scipy.stats import ncx2
 
-    def cir_continuous_path(X0=0.05, kappa=2.0, theta=0.05, sigma=0.15, T=3.0, num_points=1000, paths=1, seed=42):
-        """
-        Evaluates continuous CIR process trajectories using non-central chi-squared transition distributions.
-        """
+    def ou_continuous_path(X0=0.0, theta=2.0, mu=1.0, sigma=0.5, T=3.0, num_points=1000, paths=1, seed=42):
         if seed is not None:
             np.random.seed(seed)
 
         t = np.linspace(0, T, num_points)
         dt = T / (num_points - 1)
         
-        d = (4 * kappa * theta) / (sigma**2)
-        c = (sigma**2 * (1 - np.exp(-kappa * dt))) / (4 * kappa)
+        # Standard Brownian motion increments dW
+        dW = np.random.normal(0, np.sqrt(dt), size=(paths, num_points - 1))
         
         X = np.zeros((paths, num_points))
         X[:, 0] = X0
         
+        # Evaluate stochastic integral sum for continuous trajectory
         for i in range(1, num_points):
-            ncp = (4 * kappa * X[:, i - 1] * np.exp(-kappa * dt)) / (sigma**2 * (1 - np.exp(-kappa * dt)))
-            # Sample exact transition from non-central chi-squared
-            X[:, i] = c * np.random.noncentral_chisquare(df=d, nonc=ncp, size=paths)
+            ti = t[i]
+            s_grid = t[:i]
+            weights = np.exp(-theta * (ti - s_grid))
+            stochastic_integral = np.sum(dW[:, :i] * weights, axis=1)
+            
+            X[:, i] = mu + (X0 - mu) * np.exp(-theta * ti) + sigma * stochastic_integral
             
         return t, X
     ```
 
 === "Discrete-time"
 
-    ## Discrete-time Recipes for CIR Process
+    ## Discrete-time Recipes for OU Process
 
-    ### Method 1: Exact Non-Central Chi-Squared Sampling (Recommended)
+    To simulate the Ornstein–Uhlenbeck process on a discrete grid $t_0 < t_1 < \dots < t_N$ with uniform step size $\Delta t = \frac{T}{N}$, two discrete numerical formulations are available.
 
-    Samples the exact transition distribution without time discretization bias:
+    ---
+
+    ### Method 1: Discrete Exact Gaussian Transition Sampling
+
+    #### Short Explanation
+    Method 1 samples discrete step updates $X_{t_{i+1}}$ directly from the exact conditional Gaussian transition density derived via Itô's Lemma over step $\Delta t$.
+
+    * **Zero Discretization Error ($\mathcal{O}(0)$):** Preserves exact conditional mean decay and variance damping for any step size $\Delta t$.
+    * **Numerical Stability:** The exponential decay factor $e^{-\theta \Delta t} \in (0, 1)$ guarantees strictly stable relaxation toward $\mu$ without numerical overshooting.
+
+    $$X_{t_{i+1}} = \mu + (X_{t_i} - \mu) e^{-\theta \Delta t} + \sqrt{\frac{\sigma^2}{2\theta} \left(1 - e^{-2\theta \Delta t}\right)} \, Z_i, \quad Z_i \sim \mathcal{N}(0, 1)$$
 
     ```python
     import numpy as np
 
-    def simulate_cir_exact(X0=0.05, kappa=2.0, theta=0.05, sigma=0.15, T=3.0, steps=200, paths=1, seed=42):
+    def simulate_ou_exact(X0=0.0, theta=2.0, mu=1.0, sigma=0.5, T=3.0, steps=200, paths=1, seed=42):
         if seed is not None:
             np.random.seed(seed)
             
         dt = T / (steps - 1)
         t = np.linspace(0, T, steps)
         
-        df = (4 * kappa * theta) / (sigma**2)
-        c = (sigma**2 * (1 - np.exp(-kappa * dt))) / (4 * kappa)
+        decay = np.exp(-theta * dt)
+        step_std = np.sqrt((sigma**2 / (2 * theta)) * (1 - np.exp(-2 * theta * dt)))
         
         X = np.zeros((paths, steps))
         X[:, 0] = X0
         
         for i in range(1, steps):
-            ncp = (4 * kappa * X[:, i - 1] * np.exp(-kappa * dt)) / (sigma**2 * (1 - np.exp(-kappa * dt)))
-            X[:, i] = c * np.random.noncentral_chisquare(df=df, nonc=ncp, size=paths)
+            Z = np.random.normal(0, 1, paths)
+            X[:, i] = mu + (X[:, i - 1] - mu) * decay + step_std * Z
             
         return t, X
     ```
 
     ---
 
-    ### Method 2: Full Truncation Euler-Maruyama Scheme
+    ### Method 2: Discrete Euler–Maruyama Discretization Scheme
 
-    Standard Euler schemes fail for square-root diffusions when $X_t < 0$. The **Full Truncation** variant maintains numerical stability by truncating inside the square root:
+    #### Short Explanation
+    Method 2 applies a first-order finite-difference approximation to the linear differential equation $dX_t = \theta(\mu - X_t)dt + \sigma dW_t$.
 
-    $$X_{t_{i+1}} = X_{t_i} + \kappa (\theta - X_{t_i}^+) \Delta t + \sigma \sqrt{X_{t_i}^+} \sqrt{\Delta t} \, Z_i, \quad \text{where } X^+ = \max(X, 0)$$
+    * **Order 0.5 Strong Error:** Approximates exponential decay using linear term $(1 - \theta \Delta t)$.
+    * **Overshooting Risk:** For large step sizes $\Delta t > \frac{2}{\theta}$, the linear update multiplier $(1 - \theta \Delta t) < -1$ causes artificial, explosive numerical oscillations around mean $\mu$.
+
+    $$X_{t_{i+1}} = X_{t_i} + \theta (\mu - X_{t_i}) \Delta t + \sigma \sqrt{\Delta t} \, Z_i, \quad Z_i \sim \mathcal{N}(0, 1)$$
 
     ```python
-    def simulate_cir_truncated_euler(X0=0.05, kappa=2.0, theta=0.05, sigma=0.15, T=3.0, steps=200, paths=1, seed=42):
+    import numpy as np
+
+    def simulate_ou_euler(X0=0.0, theta=2.0, mu=1.0, sigma=0.5, T=3.0, steps=200, paths=1, seed=42):
         if seed is not None:
             np.random.seed(seed)
             
@@ -121,13 +137,11 @@
         
         for i in range(1, steps):
             Z = np.random.normal(0, 1, paths)
-            X_pos = np.maximum(X[:, i - 1], 0.0)
-            X[:, i] = X[:, i - 1] + kappa * (theta - X_pos) * dt + sigma * np.sqrt(X_pos) * np.sqrt(dt) * Z
-            X[:, i] = np.maximum(X[:, i], 0.0)  # Floor step
+            X[:, i] = X[:, i - 1] + theta * (mu - X[:, i - 1]) * dt + sigma * np.sqrt(dt) * Z
             
         return t, X
     ```
 
 === "Simulation"
 
-    <iframe src="/assets/simulations/cir_process.html" style="width: 100%; height: 680px; border: none; border-radius: 12px; overflow: hidden;" scrolling="no"></iframe>
+    <iframe src="/assets/simulations/ou_process.html" style="width: 100%; height: 680px; border: none; border-radius: 12px; overflow: hidden;" scrolling="no"></iframe>

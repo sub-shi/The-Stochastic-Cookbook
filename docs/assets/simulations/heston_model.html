@@ -23,7 +23,13 @@
       <div>
         <label>Method: </label>
         <select id="sim-method" onchange="render()">
-          <option value="full_truncation" selected>Full Truncation Euler Scheme</option>
+          <optgroup label="Continuous-Time">
+            <option value="continuous">Theoretical Continuous Trajectory</option>
+          </optgroup>
+          <optgroup label="Discrete-Time">
+            <option value="exact">Exact Non-Central Chi-Squared</option>
+            <option value="full_truncation" selected>Full Truncation Euler Scheme</option>
+          </optgroup>
         </select>
       </div>
       <button onclick="render()">Render / Refresh Plots</button>
@@ -64,11 +70,33 @@
     return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
   }
 
+  // Poisson-Gaussian approximation for fast non-central chi-squared sampling in JS
+  function rand_ncx2(df, nonc) {
+    let poisson_draw = 0;
+    if (nonc > 0) {
+      const L = Math.exp(-nonc / 2.0);
+      let k = 0, p = 1.0;
+      do {
+        k++;
+        p *= Math.random();
+      } while (p > L);
+      poisson_draw = k - 1;
+    }
+    const total_df = df + 2 * poisson_draw;
+    let sum_sq = 0;
+    for (let i = 0; i < total_df; i++) {
+      const z = randn();
+      sum_sq += z * z;
+    }
+    return sum_sq;
+  }
+
   function render() {
     const rho = parseFloat(document.getElementById('rho').value);
     const sigma = parseFloat(document.getElementById('sigma').value);
     const kappa = parseFloat(document.getElementById('kappa').value);
     const P = parseInt(document.getElementById('paths').value);
+    const method = document.getElementById('sim-method').value;
     const N = 200;
 
     document.getElementById('rho-val').innerText = rho.toFixed(2);
@@ -88,19 +116,33 @@
     let S = Array.from({length: P}, () => new Array(N).fill(S0));
     let v = Array.from({length: P}, () => new Array(N).fill(v0));
 
-    for (let p = 0; p < P; p++) {
-      for (let i = 1; i < N; i++) {
-        let Z1 = randn();
-        let Z2 = rho * Z1 + Math.sqrt(1 - rho * rho) * randn();
+    const df = (4 * kappa * theta) / (sigma * sigma);
+    const c = (sigma * sigma * (1 - Math.exp(-kappa * dt))) / (4 * kappa);
 
-        let v_pos = Math.max(0, v[p][i - 1]);
-        
-        // Asset Price Update
-        S[p][i] = S[p][i - 1] * Math.exp((r - 0.5 * v_pos) * dt + Math.sqrt(v_pos) * sqrt_dt * Z1);
-        
-        // Variance Update (Full Truncation Euler)
-        v[p][i] = v[p][i - 1] + kappa * (theta - v_pos) * dt + sigma * Math.sqrt(v_pos) * sqrt_dt * Z2;
-        v[p][i] = Math.max(0, v[p][i]);
+    for (let p = 0; p < P; p++) {
+      if (method === 'exact') {
+        for (let i = 1; i < N; i++) {
+          const ncp = (4 * kappa * v[p][i - 1] * Math.exp(-kappa * dt)) / (sigma * sigma * (1 - Math.exp(-kappa * dt)));
+          v[p][i] = c * rand_ncx2(df, ncp);
+
+          let Z1 = randn();
+          let v_pos = Math.max(0, v[p][i - 1]);
+          S[p][i] = S[p][i - 1] * Math.exp((r - 0.5 * v_pos) * dt + Math.sqrt(v_pos) * sqrt_dt * Z1);
+        }
+      } else { // 'continuous' or 'full_truncation'
+        for (let i = 1; i < N; i++) {
+          let Z1 = randn();
+          let Z2 = rho * Z1 + Math.sqrt(1 - rho * rho) * randn();
+
+          let v_pos = Math.max(0, v[p][i - 1]);
+          
+          // Asset Price Update
+          S[p][i] = S[p][i - 1] * Math.exp((r - 0.5 * v_pos) * dt + Math.sqrt(v_pos) * sqrt_dt * Z1);
+          
+          // Variance Update (Full Truncation)
+          v[p][i] = v[p][i - 1] + kappa * (theta - v_pos) * dt + sigma * Math.sqrt(v_pos) * sqrt_dt * Z2;
+          v[p][i] = Math.max(0, v[p][i]);
+        }
       }
     }
 

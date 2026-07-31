@@ -23,8 +23,13 @@
       <div>
         <label>Method: </label>
         <select id="sim-method" onchange="render()">
-          <option value="exact" selected>Exact Exponential Sampling</option>
-          <option value="euler">Euler-Maruyama Discretization</option>
+          <optgroup label="Continuous-Time">
+            <option value="continuous">Theoretical Continuous Trajectory</option>
+          </optgroup>
+          <optgroup label="Discrete-Time">
+            <option value="exact" selected>Exact Exponential Sampling</option>
+            <option value="euler">Euler–Maruyama Discretization</option>
+          </optgroup>
         </select>
       </div>
       <button onclick="render()">Render / Refresh Plots</button>
@@ -86,14 +91,14 @@
     let logS = Array.from({length: P}, () => new Array(N).fill(Math.log(S0)));
 
     for (let p = 0; p < P; p++) {
-      if (method === 'exact') {
+      if (method === 'continuous' || method === 'exact') {
         let W = 0;
         for (let i = 1; i < N; i++) {
           W += sqrt_dt * randn();
           S[p][i] = S0 * Math.exp((mu - 0.5 * sigma * sigma) * t[i] + sigma * W);
           logS[p][i] = Math.log(S[p][i]);
         }
-      } else {
+      } else if (method === 'euler') {
         for (let i = 1; i < N; i++) {
           let dW = sqrt_dt * randn();
           S[p][i] = Math.max(1e-4, S[p][i - 1] + mu * S[p][i - 1] * dt + sigma * S[p][i - 1] * dW);

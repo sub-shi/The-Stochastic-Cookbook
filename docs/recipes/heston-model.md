@@ -9,11 +9,17 @@
     $$\begin{aligned}     dS_t &= r S_t dt + \sqrt{v_t} S_t dW_t^S \\     dv_t &= \kappa (\theta - v_t) dt + \sigma \sqrt{v_t} dW_t^v     \end{aligned}$$
 
     where:
-    * $r$ is the risk-free interest rate.
+    * $r$ is the risk-free interest rate (drift).
     * $\kappa > 0$ is the mean-reversion speed of variance.
-    * $\theta > 0$ is the long-term variance level.
+    * $\theta > 0$ is the long-term structural variance level.
     * $\sigma > 0$ is the volatility of variance ("vol of vol").
     * $d\langle W^S, W^v \rangle_t = \rho \, dt$, with $\rho \in [-1, 1]$ capturing the **leverage effect** (correlation between returns and volatility shocks).
+
+    ---
+
+    ### Continuous Trajectory Concept
+
+    In continuous time, the Heston model generates a two-dimensional coupled stochastic trajectory $(S(t), v(t))$. Asset log-returns depend dynamically on instantaneous variance $v_t$, which itself oscillates mean-revertively around long-term variance $\theta$.
 
     ---
 
@@ -39,9 +45,6 @@
         S0=100.0, v0=0.04, r=0.02, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, 
         T=1.0, num_points=1000, paths=1, seed=42
     ):
-        """
-        Continuous vector evaluation of Heston asset price and volatility trajectories.
-        """
         if seed is not None:
             np.random.seed(seed)
 
@@ -75,9 +78,66 @@
 
     ## Discrete-time Recipes for Heston Model
 
-    ### Full Truncation Euler-Maruyama Scheme
+    Simulating the two-dimensional Heston system on a discrete time grid $t_0 < t_1 < \dots < t_N$ with uniform step size $\Delta t = \frac{T}{N}$ requires handling both the correlated Brownian drivers and the square-root variance boundary.
 
-    Because $v_t$ can drop below zero under standard Euler discretization, the **Full Truncation** scheme truncates $v_t$ inside the drift and diffusion terms while preserving the state trajectory:
+    ---
+
+    ### Method 1: Discrete Exact Non-Central Chi-Squared Conditional Sampling
+
+    #### Short Explanation
+    Method 1 samples variance $v_{t_{i+1}}$ directly from the exact non-central chi-squared distribution derived from the CIR variance SDE, then updates log-asset prices $S_{t_{i+1}}$ conditionally using correlated normal increments.
+
+    * **Zero Variance Discretization Error ($\mathcal{O}(0)$):** Generates exact conditional variance updates without time-step bias.
+    * **Boundary Safety:** Ensures variance $v_t \ge 0$ naturally without needing artificial zero truncation when Feller's condition holds.
+
+    $$v_{t_{i+1}} = \frac{1}{c} \, Y_i, \quad Y_i \sim \chi^2_d(\Lambda_i)$$
+
+    $$c = \frac{4\kappa}{\sigma^2(1 - e^{-\kappa \Delta t})}, \quad d = \frac{4\kappa\theta}{\sigma^2}, \quad \Lambda_i = c v_{t_i} e^{-\kappa \Delta t}$$
+
+    ```python
+    import numpy as np
+
+    def simulate_heston_exact(
+        S0=100.0, v0=0.04, r=0.02, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, 
+        T=1.0, steps=200, paths=1, seed=42
+    ):
+        if seed is not None:
+            np.random.seed(seed)
+
+        dt = T / (steps - 1)
+        t = np.linspace(0, T, steps)
+        sqrt_dt = np.sqrt(dt)
+
+        df = (4 * kappa * theta) / (sigma**2)
+        c = (sigma**2 * (1 - np.exp(-kappa * dt))) / (4 * kappa)
+
+        S = np.zeros((paths, steps))
+        v = np.zeros((paths, steps))
+        S[:, 0] = S0
+        v[:, 0] = v0
+
+        for i in range(1, steps):
+            # 1. Sample exact variance transition
+            ncp = (4 * kappa * v[:, i - 1] * np.exp(-kappa * dt)) / (sigma**2 * (1 - np.exp(-kappa * dt)))
+            v[:, i] = c * np.random.noncentral_chisquare(df=df, nonc=ncp, size=paths)
+
+            # 2. Update log-price conditionally using correlated Brownian motion
+            Z1 = np.random.normal(0, 1, paths)
+            v_pos = np.maximum(v[:, i - 1], 0.0)
+            S[:, i] = S[:, i - 1] * np.exp((r - 0.5 * v_pos) * dt + np.sqrt(v_pos) * sqrt_dt * Z1)
+
+        return t, S, v
+    ```
+
+    ---
+
+    ### Method 2: Discrete Full Truncation Euler–Maruyama Scheme
+
+    #### Short Explanation
+    Because $v_t$ can drop below zero under standard finite-difference discretization, the **Full Truncation Euler** scheme applies a non-negativity constraint ($v^+ = \max(v, 0)$) inside both drift and diffusion terms while preserving state evolution.
+
+    * **Order 0.5 Strong Error:** Achieves strong convergence of $\mathcal{O}(\sqrt{\Delta t})$ as time step $\Delta t \to 0$.
+    * **High Execution Speed:** Highly optimized for production engines due to simple standard normal random draws.
 
     $$v_{t_{i+1}} = v_{t_i} + \kappa \left(\theta - v_{t_i}^+\right) \Delta t + \sigma \sqrt{v_{t_i}^+} \sqrt{\Delta t} \, Z_i^v$$
 
@@ -92,9 +152,6 @@
         S0=100.0, v0=0.04, r=0.02, kappa=2.0, theta=0.04, sigma=0.3, rho=-0.7, 
         T=1.0, steps=200, paths=1, seed=42
     ):
-        """
-        Full Truncation Euler-Maruyama simulation for the Heston model.
-        """
         if seed is not None:
             np.random.seed(seed)
 
